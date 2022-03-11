@@ -1,0 +1,58 @@
+<template>
+	<div class="page">
+		<div class="navbar">
+			<div class="navbar-bg"></div>
+			<div class="navbar-inner">
+				<div class="left"></div>
+				<div class="title">メイン画面</div>
+				<div class="right">
+					${login ?
+						$h`<a class="link" href="#" @click=${logout}>
+							<i class="f7-icons">person_badge_plus_fill</i>
+						</a>`	 
+					:
+					$h`<a class="link" href="/login/">
+								<i class="f7-icons">person</i>
+							</a>`
+					}
+				</div>
+			</div>
+		</div>
+		<div class="toolbar tabbar-labels toolbar-bottom">
+			<div class="toolbar-inner">
+				<a href="./" class="tab-link" data-route-tab-id="tab1">
+					<i class="icon f7-icons">book</i>
+					<span class="tabbar-label">ニュース</span>
+				</a>
+				<a href="./map/" class="tab-link" data-route-tab-id="tab2">
+					<i class="icon f7-icons">map</i>
+					<span class="tabbar-label">地図</span>
+				</a>
+				<a href="./information/" class="tab-link" data-route-tab-id="tab3">
+					<i class="icon f7-icons">exclamationmark_circle</i>
+					<span class="tabbar-label">情報</span>
+				</a>
+			</div>
+		</div>
+		<div class="tabs tabs-routable">
+			<div class="page-content tab" id="tab1"></div>
+			<div class="page-content tab" id="tab2"></div>
+			<div class="page-content tab" id="tab3"></div>
+		</div>
+	</div>
+</template>
+<script>
+  export default function (props, {$f7, $on, $onMounted, $update}) {
+		let login;
+		$on('page:beforein', () => {
+			login = !(ncmb.User.getCurrentUser() === null);
+			$update();
+		});
+		const logout = async () => {
+			await ncmb.User.logout();
+			login = false;
+			$update();
+		};
+		return $render;
+	}
+</script>

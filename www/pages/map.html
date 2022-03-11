@@ -1,0 +1,258 @@
+<template>
+  <div class="page">
+    <!-- Top Navbar -->
+    <div class="navbar">
+      <div class="navbar-bg"></div>
+      <div class="navbar-inner">
+        <div class="title sliding">地図コンポーネント</div>
+      </div>
+    </div>
+    <div class="page-content">
+      <!-- 地図表示とリスト表示を切り替えます -->
+      <p class="segmented segmented-raised">
+        <button class="button button-map button-active" @click=${() => changeView("map")}>地図</button>
+        <button class="button button-list" @click=${() => changeView("list")}>リスト</button>
+      </p>
+      <!-- 地図用 -->
+      <span class="sub-page page-map">
+        <div id='map'></div>
+      </span>
+      <!-- リスト用 -->
+      <span class="sub-page page-list">
+        <div class="list media-list">
+          <ul>
+            ${stores.map(store => $h`
+              <li>
+                <a href="#" class="item-content">
+                  <div class="item-inner">
+                    <div class="item-title-row">
+                      <div class="item-title">${store.name}店</div>
+                      <div class="item-after">${distance(store.geo)}km</div>
+                    </div>
+                    <div class="item-subtitle">${store.address}</div>
+                    <div class="item-text">${store.tel}</div>
+                  </div>
+                </a>
+              </li>
+            `)}
+          </ul>
+        </div>
+      </span>
+    </div>
+    <!-- マーカーをタップした際のシート表示用 -->
+    <div class="sheet-modal store-sheet">
+      <div class="toolbar">
+        <div class="toolbar-inner">
+          <div class="left"></div>
+          <div class="right"><a class="link sheet-close" href="#">閉じる</a></div>
+        </div>
+      </div>
+      <div class="sheet-modal-inner">
+        <div class="block">
+          <h4>${store.name}店</h4>
+          <p>
+            <ul>
+              <li>電話番号: ${store.tel}</li>
+              <li>住所: ${store.address}</li>
+            </ul>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+<style>
+  #map {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+  canvas, .mapboxgl-canvas {
+    height: 100%;
+  }
+  .page-list {
+    display: none;
+  }
+</style>
+<script>
+  export default function (props, {$f7, $on, $onMounted, $update}) {
+    // NCMBとMapboxが初期化されているかチェックします
+    if (typeof ncmb === 'undefined') throw 'NCMBが初期化されていません';
+    if (typeof mapboxgl.accessToken === 'undefined') throw 'Mapboxが初期化されていません';
+    // 地図コンポーネントで利用している変数
+    let map;
+    let stores = [];
+    let store = {};
+    let markers = [];
+    let position = {};
+
+    // マウントされた際に実行します
+    $onMounted(async () => {
+      // ローディングアイコンを表示
+      app.preloader.show();
+      try {
+        // 現在位置を取得します
+        const { coords } = (await getCurrentPosition());
+        // ポジションとして緯度経度を記録します
+        position = {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+        };
+        // 地図を表示します
+        initMap();
+        // 現在位置の付近にある店舗情報を取得します
+        stores = await getStoresNear();
+        // 取得した店舗を地図に表示します
+        addStore();
+        // 地図の表示を調整します
+        fitBounds();
+        // 地図をドラッグした際のイベント設定です
+        map.on('dragend', moveMap);
+        // ローディングアイコンを消します
+        app.preloader.hide();
+      } catch (e) {
+        console.log(e);
+        $f7.dialog.alert('初期表示中にエラーが発生しました');
+      }
+    });
+
+    // 地図を移動した際のイベントです
+    const moveMap = async (e) => {
+      try {
+        // 古いデータを消します
+        initialize();
+        // 地図の中心点を取得します
+        const {lat, lng} = map.getCenter();
+        // ポジションを更新します
+        position.latitude = lat;
+        position.longitude = lng;
+        // 中心点の付近にある店舗情報を取得します
+        stores = await getStoresWithinKilometers();
+        // 取得した店舗を地図に表示します
+        addStore();
+      } catch (e) {
+        $f7.dialog.alert('地図移動時にエラーが発生しました');
+      }
+    }
+
+    // 古いデータを消します
+    const initialize = () => {
+      // 地図のマーカーを消します
+      markers.forEach(m => m.remove());
+      // 店舗情報を消します
+      stores = [];
+      store = {};
+    }
+
+    // 地図表示とマーカー表示を切り替えます
+    const changeView = (value) => {
+      // セグメントボタンのアクティブを切り替えます
+      $('.segmented button').removeClass('button-active');
+      $(`.button-${value}`).addClass('button-active');
+      // 地図とリスト表示を切り替えます
+      $('.sub-page').hide();
+      // 表示を更新します
+      $update();
+      $(`.page-${value}`).show();
+    };
+
+    // HTML5 APIを使って現在位置を取得します
+    const getCurrentPosition = () => {
+      return new Promise((res, rej) => {
+        navigator.geolocation
+          .getCurrentPosition(res, rej);
+      })
+    };
+
+    // 地図を初期化します
+    const initMap = () => {
+      const { latitude, longitude } = position;
+      map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [longitude, latitude],
+        zoom: 11,
+      });
+    }
+
+    // 付近にある店舗情報を取得します
+    const getStoresNear = () => {
+      const { latitude, longitude } = position;
+      const geo = new ncmb.GeoPoint(latitude, longitude);
+      const Store = ncmb.DataStore('Store');
+      return Store
+        .near('geo', geo)
+        .limit(5) // 件数は5件としています
+        .fetchAll();
+    }
+
+    // 付近にあるデータを半径指定で取得します
+    const getStoresWithinKilometers = () => {
+      const { latitude, longitude } = position;
+      const geo = new ncmb.GeoPoint(latitude, longitude);
+      const Store = ncmb.DataStore('Store');
+      return Store
+        .withinKilometers('geo', geo, 5) // 5キロ指定です
+        .fetchAll();
+    }
+
+    // 地図に店舗マーカーを表示します
+    const addStore = () => {
+      stores.forEach(store => {
+        markers.push(new clickableMarker()
+          .setLngLat([store.geo.longitude, store.geo.latitude])
+          .setStore(store)
+          .addTo(map));
+      });
+    };
+
+    // 店舗情報がすべて表示される形で地図の中心点を変更します
+    const fitBounds = () => {
+      // turf.jsを利用します
+      const line = turf.lineString(stores.map(store => [store.geo.longitude, store.geo.latitude]));
+      const bbox = turf.bbox(line);
+      map.fitBounds(bbox, {
+        padding: {top: 10, bottom: 10, left: 10, right: 10}
+      });
+    }
+
+    // 一覧表示用に、店舗までの距離を計算します
+    const distance = ({ latitude, longitude }) => {
+      const R = Math.PI / 180;
+      latitude2 = position.latitude;
+      longitude2 = position.longitude;
+      latitude *= R;
+      longitude *= R;
+      latitude2 *= R;
+      longitude2 *= R;
+      return (6371
+        * Math.acos(Math.cos(latitude)
+        * Math.cos(latitude2)
+        * Math.cos(longitude2 - longitude) + Math.sin(latitude)
+        * Math.sin(latitude2))).toFixed(1); 
+    }
+
+    // マーカーをタップした際にシートを表示するため、Markerクラスの処理を書き換えています
+    class clickableMarker extends mapboxgl.Marker{
+      // 店舗情報をクラス内に入れておきます
+      setStore(store) {
+        this.store = store;
+        return this;
+      }
+      // マーカーをタップした際のイベントです
+      _onMapClick(e) {
+        const targetElement = e.originalEvent.target;
+        const element = this._element;
+        if (targetElement === element || element.contains((targetElement))) {
+          // 店舗情報をセットします
+          store = this.store;
+          // 表示を更新します
+          $update();
+          // シートを表示します
+          app.sheet.open('.store-sheet');
+        }
+      }
+    }
+    return $render;
+  }
+</script>

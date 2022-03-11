@@ -1,0 +1,130 @@
+<template>
+  <div class="page">
+    <div class="navbar">
+      <div class="navbar-bg"></div>
+      <div class="navbar-inner sliding">
+				<div class="left">
+					<a href="#" class="link back">
+						<i class="icon icon-back"></i>
+						<span class="if-not-md">戻る</span>
+					</a>
+				</div>
+        <div class="title">認証</div>
+      </div>
+    </div>
+    <div class="page-content">
+      <p class="segmented">
+        <button class="button ${ viewType !== 'signup' && 'button-disabled'}" @click=${() => changeView('signup')}>新規登録</button>
+        <button class="button ${ viewType !== 'login' && 'button-disabled'}" @click=${() => changeView('login')}>ログイン</button>
+      </p>
+      <div class="list">
+        <ul>
+          <li class="item-content item-input">
+            <div class="item-inner">
+              <div class="item-title item-label">メールアドレス</div>
+              <div class="item-input-wrap">
+                <input type="email" name="email" required placeholder="メールアドレスを入力してください" />
+              </div>
+            </div>
+          </li>
+          ${ viewType === 'login' && $h`
+            <li class="item-content item-input">
+              <div class="item-inner">
+                <div class="item-title item-label">パスワード</div>
+                <div class="item-input-wrap">
+                  <input type="password" name="password" placeholder="パスワード"/>
+                </div>
+              </div>
+            </li>
+          `}
+        </ul>
+      </div>
+      <div class="list">
+        <ul>
+          <li>
+            ${ viewType === 'signup' && $h`
+              <a href="#" class="item-link list-button login-button" @click=${signUp}>新規登録</a>
+            `}
+            ${ viewType === 'login' && $h`
+              <a href="#" class="item-link list-button login-button" @click=${login}>ログイン</a>
+            `}
+            ${ viewType === 'reminder' && $h`
+            <a href="#" class="item-link list-button login-button" @click=${reminder}>パスワード再設定メールを送信</a>
+            `}
+          </li>
+        </ul>
+        <div class="block-footer">
+          <a href="#" @click=${() => changeView('reminder')}>パスワードを忘れた場合はこちら</a></div>
+      </div>
+    </div>
+  </div>
+</template>
+<style>
+  .button-disabled {
+    color: grey;
+  }
+</style>
+<script>
+  export default function (props, {$f7, $f7router, $update }) {
+    // NCMBが初期化されているかチェックします
+    if (typeof ncmb === 'undefined') throw 'NCMBが初期化されていません';
+    let viewType = 'signup'; // 表示分け用
+    // 表示を切り替える関数
+    const changeView = (type) => {
+      viewType = type;
+      $('[name="email"]').focus();
+      $update();
+    };
+    // 新規登録用関数
+    const signUp = () => {
+      // メールアドレスの入力チェック
+      const email = $('[name="email"]').val();
+      if (email.trim() === '') {
+        app.dialog.alert('メールアドレスが入力されていません', '新規登録エラー');
+        return;
+      }
+      // 新規登録用メールを送信
+      ncmb.User.requestSignUpEmail(email);
+      app.dialog.alert(`${email}宛に<br />新規登録用URLを送信しました。<br />メールボックスを確認してください。`)
+    };
+
+    // ログイン用関数
+    const login = async () => {
+      // メールアドレスとパスワードの入力チェック
+      const email = $('[name="email"]').val();
+      const password = $('[name="password"]').val();
+      if (email.trim() === '') {
+        app.dialog.alert('メールアドレスが入力されていません', 'ログインエラー');
+        return;
+      }
+      if (password.trim() === '') {
+        app.dialog.alert('パスワードが入力されていません', 'ログインエラー');
+        return;
+      }
+      try {
+        // ログイン処理
+        await ncmb.User.loginWithMailAddress(email, password);
+        app.dialog.alert('ログインしました', 'ログイン成功');
+        $f7router.back(); // 戻る場合
+      } catch (e) {
+        // エラーの場合はログインエラー
+        app.dialog.alert('メールアドレスとパスワードを確認してください', 'ログインエラー');
+      }
+    };
+
+    // パスワードリマインダー用関数
+    const reminder = () => {
+      const email = $('[name="email"]').val();
+      if (email.trim() === '') {
+        app.dialog.alert('メールアドレスが入力されていません', '入力エラー');
+        return;
+      }
+      // パスワードリマインダー送信
+      const user = new ncmb.User;
+      user.mailAddress = email;
+      user.requestPasswordReset();
+      app.dialog.alert(`${email}宛に<br />パスワード再設定用URLを送信しました。<br />メールボックスを確認してください。`)
+    };
+    return $render;
+  }
+</script>
