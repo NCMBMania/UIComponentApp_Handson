@@ -22,7 +22,7 @@ const routes = [
     componentUrl: './pages/tabs.html',
     options: {
       props: {
-        objectId: '2YAtnb0nxjjfbeZ3',
+        objectId: '2YAtnb0nxjjfbeZ3', // 書き換えてください
       },
     },
     tabs: [
