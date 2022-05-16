@@ -22,6 +22,7 @@ module.exports = async (req, res) => {
   date.setHours(date.getHours() - 1);
   let feed = await Feed.equalTo('url', req.query.url).fetch();
   if (feed.objectId) {
+    // キャッシュがあれば、それを返却して終わり
     if (new Date(feed.fetchDate.iso) > date) {
       res.json({
         objectId: feed.objectId,
